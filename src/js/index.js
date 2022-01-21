@@ -3,6 +3,8 @@
 import Arduino from './arduino';
 import Neopixel from './neopixel';
 
+const LED_SHAPE      = "circle" // { strip, circle }
+
 const INIT_LED_ANGLE =   0; // [°]
 const INIT_HUE_ANGLE =   0; // [°], 0 = red, 120 = green, 240 = blue
 
@@ -42,7 +44,9 @@ function blue(degrees) {
   return green(degrees - 120);
 }
 
-const strip = new Neopixel.fromElement(document.getElementById("leds"));
+const stripElement = document.getElementById("leds");
+stripElement.classList.add(LED_SHAPE);
+const strip = new Neopixel.fromElement(stripElement);
 let led_angle = 0;
 let hue_angle = 0;
 
