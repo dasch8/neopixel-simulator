@@ -1,3 +1,38 @@
+#leds {
+    display: inline-grid;
+    gap: 10px;
+    padding: 10px;
+    background: black;
+}
+
+.strip .pixel {
+    grid-row: 1
+}
+
+.strip .p-0 {
+    grid-column: 1;
+}
+
+.circle .p-0 {
+    grid-row: 1;
+    grid-column: 2;
+}
+
+.circle .p-1 {
+    grid-row: 2;
+    grid-column: 3;
+}
+
+.circle .p-2 {
+    grid-row: 3;
+    grid-column: 2;
+}
+
+.circle .p-3 {
+    grid-row: 2;
+    grid-column: 1;
+}
+
 .pixel-strip {
     margin: 0;
     padding: 0;
