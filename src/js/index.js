@@ -3,104 +3,125 @@
 import Arduino from './arduino';
 import Neopixel from './neopixel';
 
-const LED_SHAPE      = "circle" // { strip, circle }
+const NUM_LEDS = 60;
+const LED_SHAPE = "strip" // { strip, circle }
 
-const INIT_LED_ANGLE =   0; // [°]
-const INIT_HUE_ANGLE =   0; // [°], 0 = red, 120 = green, 240 = blue
+const INIT_BRIGHT_ANGLE = 180; // [°]
+const INIT_HUE_ANGLE = 180; // [°], 0 = red, 120 = blue, 240 = green
 
-const LED_SPEED      = 720; // [°/s]
-const HUE_SPEED      =  20; // [°/s]
+const HUE_SPEED = 0; // [°/s]
+const BRIGHT_SPEED = 180; // [°/s]
 
-const HUE_PHASE      =  10; // [°/LED]
-const V_ATTEN        =  27; // [%/LED]
+const HUE_PHASE = 6; // [°/LED]
+const BRIGHT_PHASE = 6; // [°/LED]
+const BRIGHT_GAP = 300 // [°]
 
-const UPDATE_PERIOD  =  66; // [ms]
+const UPDATE_PERIOD = 66; // [ms]
 
 /* Get green component */
 function green(degrees) {
-  const c_degrees = degrees % 360;
-  if (0 <= c_degrees && c_degrees < 60) {
-    return Math.floor(255 * c_degrees / 60); // C++: return (255 * c_degrees) / 60
-  }
-  else if (60 <= c_degrees && c_degrees < 180) {
-    return 255;
-  }
-  else if (180 <= c_degrees && c_degrees < 240) {
-    return Math.floor(255 * (240 - c_degrees) / 60); // C++ return (255 * (240 - c_degrees)) / 60
-  }
-  else { // (240 <= c_degrees && c_degrees < 360)
-    return 0;
-  }
+    const c_degrees = degrees % 360;
+    if (0 <= c_degrees && c_degrees < 60) {
+        return Math.floor(255 * c_degrees / 60); // C++: return (255 * c_degrees) / 60
+    }
+    else if (60 <= c_degrees && c_degrees < 180) {
+        return 255;
+    }
+    else if (180 <= c_degrees && c_degrees < 240) {
+        return Math.floor(255 * (240 - c_degrees) / 60); // C++ return (255 * (240 - c_degrees)) / 60
+    }
+    else { // (240 <= c_degrees && c_degrees < 360)
+        return 0;
+    }
 }
 
 /* Get red component */
 function red(degrees) {
-  /* Phase shift of 1/3 period vs. green */
-  return green(degrees + 120);
+    /* Phase shift of -1/3 period vs. blue */
+    return green(degrees + 120);
 }
 
 function blue(degrees) {
-  /* Phase shift of -1/3 period vs. green */
-  return green(degrees - 120);
+    /* Phase shift of 1/3 period vs. blue */
+    return green(degrees - 120);
 }
 
-const stripElement = document.getElementById("leds");
-stripElement.classList.add(LED_SHAPE);
-const strip = new Neopixel.fromElement(stripElement);
-let led_angle = 0;
-let hue_angle = 0;
+function brightness(degrees) {
+    const c_degrees = degrees % 360;
+
+    const gap_min = 180 - Math.floor(BRIGHT_GAP / 2);
+    const gap_max = 180 + Math.floor(BRIGHT_GAP / 2);
+    if (0 <= c_degrees && c_degrees < gap_min) {
+        return 1000 * (gap_min - c_degrees) / gap_min;
+    }
+    else if (gap_max <= c_degrees && c_degrees < 360) {
+        return 1000 * (c_degrees - gap_max) / (360 - gap_max);
+    }
+    else {
+        return 0;
+    }
+}
+
+const strip = new Neopixel(NUM_LEDS);
+
+let bright_angle = 0; // [m°], C++: uint32_t
+let hue_angle = 0; // [m°], C++: uint32_t
 
 const arduino = new Arduino(
 
     // This function is run once when the arduino starts
     function begin() {
-      led_angle = INIT_LED_ANGLE;
-      hue_angle = INIT_HUE_ANGLE;
+        bright_angle = INIT_BRIGHT_ANGLE * 1000;
+        hue_angle = INIT_HUE_ANGLE * 1000;
 
-      strip.begin();
-      strip.show();
+        strip.begin();
+
+        const stripElement = document.getElementsByClassName("pixel-strip")[0];
+        stripElement.classList.add(LED_SHAPE);
+
+        strip.show();
     },
 
     // This function is run continuously
     // Use the delay function to prevent it from burning cycles
     // like crazy
     async function loop() {
-      await rainbow(led_angle, hue_angle, HUE_PHASE, V_ATTEN);
-      led_angle = (led_angle + Math.floor(LED_SPEED * UPDATE_PERIOD / 1000)) % 360;
-      if (led_angle < 0) {
-        led_angle = led_angle + 360;
-      }
-      hue_angle = (hue_angle + Math.floor(HUE_SPEED * UPDATE_PERIOD / 1000)) % 360;
-      if (hue_angle < 0) {
-        hue_angle = hue_angle + 360;
-      }
-      await arduino.delay(UPDATE_PERIOD)
+        await rainbow(
+            Math.floor(hue_angle / 1000), // C++: hue_angle / 1000
+            Math.floor(bright_angle / 1000), // C++: bright_angle / 1000
+            HUE_PHASE, BRIGHT_PHASE
+        );
+
+        hue_angle = (hue_angle + HUE_SPEED * UPDATE_PERIOD) % 360000;
+        if (hue_angle < 0) {
+            hue_angle = hue_angle + 360000;
+        }
+        bright_angle = (bright_angle + BRIGHT_SPEED * UPDATE_PERIOD) % 360000;
+        if (bright_angle < 0) {
+            bright_angle = bright_angle + 360000;
+        }
+
+        await arduino.delay(UPDATE_PERIOD)
     }
 );
 
-async function rainbow(led_angle, hue_angle, hue_phase, value_atten) {
-  const led_offset = Math.floor(led_angle * strip.numPixels() / 360);
+async function rainbow(hue_angle, bright_angle, hue_phase, bright_phase) {  
+    for (let pixel = 0; pixel < strip.numPixels(); pixel++) {
+        const pixel_hue_phase = pixel * hue_phase;
+        const pixel_hue_angle = hue_angle + pixel_hue_phase;
 
-  // console.log(led_angle, led_offset);
+        const pixel_bright_phase = pixel * bright_phase;
+        const pixel_bright_angle = bright_angle + pixel_bright_phase;
 
-  for (let pixel = 0; pixel < strip.numPixels(); pixel++) {
-    const led = (pixel + led_offset) % strip.numPixels();
+        const bright = brightness(pixel_bright_angle);
 
-    const led_hue_phase = led * hue_phase;
-    const d = hue_angle + led_hue_phase;
+        const r = Math.floor((red(pixel_hue_angle) * bright) / 1000);
+        const g = Math.floor((green(pixel_hue_angle) * bright) / 1000);
+        const b = Math.floor((blue(pixel_hue_angle) * bright) / 1000);
 
-    let value_factor = 100 - led * value_atten;
-    if (value_factor < 0) {
-      value_factor = 0;
+        strip.setPixelColor(pixel, strip.Color(r, g, b));
     }
-
-    const r = Math.floor((red(d)  * value_factor) / 100); 
-    const g = Math.floor((green(d) * value_factor) / 100);
-    const b = Math.floor((blue(d)  * value_factor) / 100);
-
-    strip.setPixelColor(pixel, strip.Color(r, g, b));
-  }
-  strip.show();
+    strip.show();
 }
 
 arduino.start();
