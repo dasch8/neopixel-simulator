@@ -9,10 +9,6 @@
     grid-row: 1
 }
 
-.strip .p-0 {
-    grid-column: 1;
-}
-
 .circle .p-0 {
     grid-row: 1;
     grid-column: 2;

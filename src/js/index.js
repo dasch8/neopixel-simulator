@@ -3,36 +3,16 @@
 import Arduino from './arduino';
 import Neopixel from './neopixel';
 
-const strip = new Neopixel.fromElement(document.getElementById("leds"));
+const INIT_LED_ANGLE =   0; // [°]
+const INIT_HUE_ANGLE =   0; // [°], 0 = red, 120 = green, 240 = blue
 
-const arduino = new Arduino(
+const LED_SPEED      = 720; // [°/s]
+const HUE_SPEED      =  20; // [°/s]
 
-    // This function is run once when the arduino starts
-    function begin() {
-      strip.begin();
-      strip.show();
-    },
+const HUE_PHASE      =  10; // [°/LED]
+const V_ATTEN        =  27; // [%/LED]
 
-    // This function is run continuously
-    // Use the delay function to prevent it from burning cycles
-    // like crazy
-    async function loop() {
-      /* Equally space the LEDs around the rainbow */
-      // const hue_phase = Math.floor(360 / strip.numPixels()); // C++: 360 / strip.numPixels()
-      /* LEDs follow each other by 25° in the rainbow */
-      await rainbow(15);
-    }
-);
-
-// Neopixel test pattern
-async function chase(c) {
-  for (var i = 0; i < strip.numPixels() + 4; i++) {
-    strip.setPixelColor(i, c); // Draw new pixel
-    strip.setPixelColor(i - 4, strip.Color(0, 0, 0)); // Erase pixel a few steps back
-    strip.show();
-    await arduino.delay(100);
-  }
-}
+const UPDATE_PERIOD  =  66; // [ms]
 
 /* Get green component */
 function green(degrees) {
@@ -62,19 +42,61 @@ function blue(degrees) {
   return green(degrees - 120);
 }
 
-async function rainbow(hue_phase) {
-  for (let i = 360; i > 0; i -= 5) {
-    for (let led = 0; led < strip.numPixels(); led++) {
-      const led_hue_phase = led * hue_phase;
-      const d = i + led_hue_phase;
-      const r = red(d);
-      const g = green(d);
-      const b = blue(d);
-      strip.setPixelColor(led, strip.Color(r, g, b));
+const strip = new Neopixel.fromElement(document.getElementById("leds"));
+let led_angle = 0;
+let hue_angle = 0;
+
+const arduino = new Arduino(
+
+    // This function is run once when the arduino starts
+    function begin() {
+      led_angle = INIT_LED_ANGLE;
+      hue_angle = INIT_HUE_ANGLE;
+
+      strip.begin();
+      strip.show();
+    },
+
+    // This function is run continuously
+    // Use the delay function to prevent it from burning cycles
+    // like crazy
+    async function loop() {
+      await rainbow(led_angle, hue_angle, HUE_PHASE, V_ATTEN);
+      led_angle = (led_angle + Math.floor(LED_SPEED * UPDATE_PERIOD / 1000)) % 360;
+      if (led_angle < 0) {
+        led_angle = led_angle + 360;
+      }
+      hue_angle = (hue_angle + Math.floor(HUE_SPEED * UPDATE_PERIOD / 1000)) % 360;
+      if (hue_angle < 0) {
+        hue_angle = hue_angle + 360;
+      }
+      await arduino.delay(UPDATE_PERIOD)
     }
-    strip.show();
-    await arduino.delay(100);
+);
+
+async function rainbow(led_angle, hue_angle, hue_phase, value_atten) {
+  const led_offset = Math.floor(led_angle * strip.numPixels() / 360);
+
+  // console.log(led_angle, led_offset);
+
+  for (let pixel = 0; pixel < strip.numPixels(); pixel++) {
+    const led = (pixel + led_offset) % strip.numPixels();
+
+    const led_hue_phase = led * hue_phase;
+    const d = hue_angle + led_hue_phase;
+
+    let value_factor = 100 - led * value_atten;
+    if (value_factor < 0) {
+      value_factor = 0;
+    }
+
+    const r = Math.floor((red(d)  * value_factor) / 100); 
+    const g = Math.floor((green(d) * value_factor) / 100);
+    const b = Math.floor((blue(d)  * value_factor) / 100);
+
+    strip.setPixelColor(pixel, strip.Color(r, g, b));
   }
+  strip.show();
 }
 
 arduino.start();
